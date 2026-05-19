@@ -13,7 +13,7 @@ class E_CATE(IENUM):
 #   cateQueue[MODULE_TYPE][AT128] = [AT128_ROOF_FRONT, ...]
 #   cateQueue[SENSOR_TYPE][LIDAR] = [AT128_ROOF_FRONT, ...]
 # 클래스명 cSensorCate → SensorRegistry.
-class SensorRegistry(metaclass=Singleton):
+class SensorRegistry(Singleton):
     def __init__(self) -> None:
         self.cate_queue: dict[str, dict[str, list[str]]] = {}
 
@@ -133,20 +133,3 @@ class SensorRegistry(metaclass=Singleton):
             sub = self.get_cate2(cate[0], cate[1]) or []
             return [v for v in sub if v == cate[2]]
         raise ValueError("get_sensor_name_list expects 1~3 args")
-    def init(self) -> "SensorRegistry":
-        return self.initialize()
-
-    def register_sensor(self) -> None:
-        self.register_sensor()
-
-    def register_module(self) -> None:
-        self.register_module()
-
-    def get_cate2_by_value(self, cate1, value):
-        return self.get_cate2_by_value(cate1, value)
-
-    def get_cate2_list(self, cate1):
-        return self.get_cate2_list(cate1)
-
-    def get_sensor_name_list(self, *cate):
-        return self.get_sensor_name_list(*cate)

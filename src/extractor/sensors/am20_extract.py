@@ -1,4 +1,3 @@
-import ctypes
 import glob
 import os
 import platform
@@ -49,15 +48,7 @@ class Am20Extract(IExtract):
         seq_num_before = 0
         payload_len_before = 0
         loop_cnt = 0
-        callback_func_type = ctypes.CFUNCTYPE(
-            None,
-            ctypes.POINTER(ctypes.c_char_p),
-            ctypes.POINTER(ctypes.c_char_p),
-            ctypes.POINTER(ctypes.c_char_p),
-            ctypes.POINTER(ctypes.c_char_p),
-        )
-        callback_func = callback_func_type(Am20Extract._custom_callback)
-        cpp_library.registerPythonCallback(callback_func)
+        cpp_library.registerPythonCallback(Am20Extract._custom_callback)
 
         try:
             tmp_save_path = f"{ctx.tmp_pcap_saved_path}{vehicle_id}/"
@@ -77,10 +68,10 @@ class Am20Extract(IExtract):
             message_buffer.seek(0)
 
             cpp_library.setProperty(
-                tmp_result_path.encode("utf-8"),
-                original_filename.encode("utf-8"),
-                dst_path.encode("utf-8"),
-                str(start).encode("utf-8"),
+                tmp_result_path,
+                original_filename,
+                dst_path,
+                str(start),
             )
             if message_buffer.get_before_file_count() == 1:
                 buf = message_buffer.get_buffer()
@@ -144,7 +135,7 @@ class Am20Extract(IExtract):
                     Decimal(timestamp - base_timestamp) * Decimal(1_000_000_000)
                 ) + Decimal(gstreamer_state.last_nano_sec)
 
-                decimal_bytes = str(nanosec).encode("utf-8")
+                decimal_bytes = str(nanosec)
 
                 if picked.get_current_cursor() == picked.get_end_cursor():
                     # 마지막 packet: 다음 IDR 위치까지만 자른다
@@ -275,12 +266,8 @@ class Am20Extract(IExtract):
         return os.path.basename(ctx.protocol.get_src_path()).split(".")[0]
 
     @staticmethod
-    def _custom_callback(tmp_result_p, original_p, dst_p, start_p) -> None:
-        # 결과를 tar로 묶어 storage 업로드 + 임시 jpg들 정리.
-        tmp_result = tmp_result_p[0].decode("utf-8")
-        original = original_p[0].decode("utf-8")
-        dst_path = dst_p[0].decode("utf-8")
-        start_time = start_p[0].decode("utf-8")
+    def _custom_callback(tmp_result: str, original: str, dst_path: str, start_time: str) -> None:
+        # pybind11 이 std::string → str 자동 변환. 결과를 tar로 묶어 storage 업로드 + 임시 jpg들 정리.
         storage = S3StorageFactory(S3StorageInfoFactory()).create_storage()
         storage.connect()
         Am20Extract._upload(storage, tmp_result, original, dst_path)

@@ -7,7 +7,7 @@
 #include <cstdint>
 #include <thread>
 #include <mutex>
-// #include <future>
+#include <future>
 
 namespace py = pybind11;
 
@@ -219,7 +219,7 @@ public:
     }
 
     void start() {
-        myFuture = std::async(std::launch::async, run);
+        myFuture = std::async(std::launch::async, &AM20Converter::run, this);
     }
 
     void join() {
@@ -236,12 +236,38 @@ public:
     }
 };
 
+// static member definitions
+std::string AM20Converter::tmpResultSavedPath;
+std::string AM20Converter::originalFilename;
+std::string AM20Converter::dstPath;
+std::string AM20Converter::startTime;
+guint AM20Converter::frameNumber = 0;
+
 PYBIND11_MODULE(am20_converter, m) {
-  py::class_<AM20Converter>(m, "AM20Converter")
-    .def(py::init<const pybind11::dict&>())
-    .def("registerPythonCallback", &AM20Converter::registerPythonCallback, "A function that starts the lidar")
-    .def("setProperty", &AM20Converter::setProperty, "A function that starts the lidar")
-    .def("setProperty", &AM20Converter::setProperty, "A function that starts the lidar");
-    
-    // .def("start", &AM20Converter::start, "A function that starts the lidar")
+    py::class_<AM20Converter>(m, "AM20Converter")
+        .def(py::init<const pybind11::dict&>())
+        .def("registerPythonCallback", &AM20Converter::registerPythonCallback)
+        .def("addElement", &AM20Converter::addElement)
+        .def("linkElements", &AM20Converter::linkElements)
+        .def("addProbe", &AM20Converter::addProbe)
+        .def("setProperty",
+             [](AM20Converter& self, const std::string& a, const std::string& b,
+                const std::string& c, const std::string& d) {
+                 self.setProperty(const_cast<char*>(a.c_str()),
+                                  const_cast<char*>(b.c_str()),
+                                  const_cast<char*>(c.c_str()),
+                                  const_cast<char*>(d.c_str()));
+             })
+        .def("appendBuffer",
+             [](AM20Converter& self, const py::bytes& buf, const std::string& nanosec, int size) {
+                 std::string s = buf;
+                 self.appendBuffer(const_cast<char*>(s.data()),
+                                   const_cast<char*>(nanosec.c_str()), size);
+             })
+        .def("setGstStatePlay", &AM20Converter::setGstStatePlay)
+        .def("setGstStatePause", &AM20Converter::setGstStatePause)
+        .def("setGstStateStop", &AM20Converter::setGstStateStop)
+        .def("start", &AM20Converter::start)
+        .def("addIdle", &AM20Converter::addIdle)
+        .def("join", &AM20Converter::join);
 }
