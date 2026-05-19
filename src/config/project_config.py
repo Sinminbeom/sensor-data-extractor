@@ -1,9 +1,13 @@
+from pathlib import Path
+
 from python_library.configure.app_config import AppConfig
 from python_library.define.enum import IENUM
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 # AppConfig (python-library) 상속 — singleton 패턴 + ini 파일 로딩은 python-library가 담당
 class ProjectConfig(AppConfig):
-    DEFAULT_CONFIG_PATH = "./conf/application.conf"
-    DEFAULT_LOGGING_CONFIG_PATH = "./conf/logging.conf"
+    DEFAULT_CONFIG_PATH = str(_REPO_ROOT / "conf" / "application.conf")
+    DEFAULT_LOGGING_CONFIG_PATH = str(_REPO_ROOT / "conf" / "logging.conf")
     LOGGER_BASE_NAME = "sensor-data-extractor"
 
     class E_CATE_TYPE(IENUM):

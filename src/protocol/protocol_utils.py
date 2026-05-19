@@ -2,7 +2,7 @@ from datetime import datetime
 
 from python_library.singleton.singleton import Singleton
 # Jenkins build name 에 들어가는 sequence id ("YYYYMMDDHHMMSS_NNNNNNNN") 생성기.
-class ProtocolUtils(metaclass=Singleton):
+class ProtocolUtils(Singleton):
     def __init__(self) -> None:
         self._sequence_id: dict[str, int] = {}
 

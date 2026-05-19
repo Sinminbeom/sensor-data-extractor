@@ -16,10 +16,7 @@ class PkUiJobDelete(BaseProtocol):
 class PkUiJobDeleteHelper:
     @staticmethod
     def factory_jenkins_from(str_mark_message: str) -> PkUiJobDelete:
-        from protocol.protocol_meta import ProtocolMeta
+        from protocol.protocol_meta import E_PROTOCOL_ID
         tokens = str_mark_message.split("_")
         sequence_id = tokens[2] + "_" + tokens[3]
-        return PkUiJobDelete(ProtocolMeta.E_PROTOCOL_ID.UI_JOB_DELETE, "UI", sequence_id)
-    @staticmethod
-    def factory_jenkins_from(str_mark_message: str) -> PkUiJobDelete:
-        return PkUiJobDeleteHelper.factory_jenkins_from(str_mark_message)
+        return PkUiJobDelete(E_PROTOCOL_ID.UI_JOB_DELETE.value, "UI", sequence_id)

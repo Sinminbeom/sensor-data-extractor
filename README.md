@@ -155,7 +155,8 @@ uv sync --dev
 
 | 모듈 | 소스 | 빌드 산출물 (예상 경로) | 의존 |
 |------|------|-----------------------|------|
-| AM20 (camera, GStreamer) | [src/drivers/am20/am20_converter.cpp](src/drivers/am20/am20_converter.cpp) | `src/drivers/am20/libam20_converter.so` | GStreamer 1.0 + DeepStream (NVIDIA GPU), pybind11 |
+| AM20 (camera, GPU) | [src/drivers/am20/am20_converter.cpp](src/drivers/am20/am20_converter.cpp) | `src/drivers/am20/am20_converter*.so` | GStreamer 1.0 + DeepStream (`nvv4l2decoder`/`nvvideoconvert`, NVIDIA GPU), pybind11 |
+| AM20 (camera, CPU) | [src/drivers/am20/am20_converter_cpu.cpp](src/drivers/am20/am20_converter_cpu.cpp) | `src/drivers/am20/am20_converter_cpu*.so` | GStreamer 1.0 (`avdec_h264`/`videoconvert`, CPU 디코딩), pybind11 |
 | AT128 (Hesai LiDAR) | [src/drivers/at128/at128_converter.cpp](src/drivers/at128/at128_converter.cpp) | `src/drivers/at128/at128_converter.so` | [HesaiLidar_SDK_2.0](src/drivers/at128/HesaiLidar_SDK_2.0) 포함, pybind11 |
 | RSBP (RoboSense LiDAR) | [src/drivers/rsbp/rsbp_converter.cpp](src/drivers/rsbp/rsbp_converter.cpp) | `src/drivers/rsbp/rsbp_converter.so` | [rs_driver](src/drivers/rsbp/rs_driver) 포함, pybind11 |
 | IMU (Novatel GNSS) | [src/drivers/imu/imu_converter.cpp](src/drivers/imu/imu_converter.cpp) | `src/drivers/imu/imu_converter.so` | [novatel_edie](src/drivers/imu/novatel_edie) 포함, pybind11 |

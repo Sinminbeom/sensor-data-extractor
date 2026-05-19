@@ -16,7 +16,7 @@ from task.redis_job_list import RedisJobListStore
 from messaging.redis_publisher import RedisPublisher
 from protocol.pk_ui_job import PkUiJob
 from protocol.pk_ui_job_delete import PkUiJobDeleteHelper
-from protocol.protocol_meta import ProtocolMeta
+from protocol.protocol_meta import E_PROTOCOL_ID, ProtocolMeta  # noqa: F401
 from utils.json_util import JsonUtil
 # 응답 헬퍼. FastAPI는 dict/list/dataclass를 자동 JSON 직렬화하므로 별도 jsonify 불필요.
 @dataclass
@@ -150,7 +150,7 @@ class WebServiceServer:
 
     def _publish_ui_job_request(self, date: str, vehicle_id: str) -> None:
         pk = PkUiJob(
-            ProtocolMeta.E_PROTOCOL_ID.UI_JOB_REQUEST,
+            E_PROTOCOL_ID.UI_JOB_REQUEST.value,
             WebServiceServer.NAME,
             date,
             vehicle_id,

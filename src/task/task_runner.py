@@ -116,9 +116,10 @@ class TaskRunner(abThread):
             )
             for sensor_name in sensor_names:
                 sensor_name_lower = sensor_name.lower()
+                # S3 path 의 sensor_name 은 원래 case (uppercase) 유지, config 매칭만 lower 비교.
                 path = (
                     f"{self._download_path}/{vehicle_id}/{sensor_type_lower}/"
-                    f"{sensor_name_lower}/{date}"
+                    f"{sensor_name}/{date}"
                 )
 
                 module_type = SensorRegistry.instance().get_cate2_by_value(
