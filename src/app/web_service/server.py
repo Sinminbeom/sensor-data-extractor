@@ -6,11 +6,12 @@ import uvicorn
 from fastapi import FastAPI
 
 from python_library.logger.app_logger import AppLogger
+from python_library.storage.s3.s3_storage_factory import S3StorageFactory
+from python_library.storage.s3.s3_storage_info_factory import S3StorageInfoFactory
 from python_library.storage.storage import IStorage
 
 from config.project_config import ProjectConfig
 from config.redis_config import RedisConfig
-from config.storage_builder import StorageBuilder
 from task.redis_job_list import RedisJobListStore
 from messaging.redis_publisher import RedisPublisher
 from protocol.pk_ui_job import PkUiJob
@@ -38,10 +39,12 @@ class WebServiceServer:
     def __init__(self) -> None:
         self._app = FastAPI()
         self._config = ProjectConfig.instance()
-        self._src_storage: IStorage
-        self._dst_storage: IStorage
-        self._src_storage, self._src_root = StorageBuilder.build_source()
-        self._dst_storage, self._dst_root = StorageBuilder.build_destination()
+        self._src_storage: IStorage = S3StorageFactory(S3StorageInfoFactory()).create_storage()
+        self._src_storage.connect()
+        self._dst_storage: IStorage = S3StorageFactory(S3StorageInfoFactory()).create_storage()
+        self._dst_storage.connect()
+        self._src_root = self._config.src_storage_root
+        self._dst_root = self._config.dst_storage_root
 
         # Redis: COM_QUEUE 발행 + JOB_LIST_QUEUE 조회 (책임별 분리된 두 클래스)
         redis_config = RedisConfig(self._config)
