@@ -5,11 +5,12 @@ from random import shuffle
 from typing import Callable
 
 from python_library.logger.app_logger import AppLogger
+from python_library.storage.s3.s3_storage_factory import S3StorageFactory
+from python_library.storage.s3.s3_storage_info_factory import S3StorageInfoFactory
 from python_library.storage.storage import IStorage
 from python_library.thread.thread import abThread
 
 from config.project_config import ProjectConfig
-from config.storage_builder import StorageBuilder
 from protocol.job_packet import JobPacket
 from protocol.pk_ui_job_info import PkUiJobInfo
 from sensor_category.enum_sensor import E_SENSOR_TYPE
@@ -41,15 +42,15 @@ class TaskRunner(abThread):
     ) -> None:
         super().__init__()
         self._registry = TaskRegistry(redis_job_list_store)
-        self._source_storage: IStorage
-        self._source_storage, self._source_root = StorageBuilder.build_source()
-        _, self._destination_root = StorageBuilder.build_destination()
+        self._config = ProjectConfig.instance()
+
+        self._source_storage: IStorage = S3StorageFactory(S3StorageInfoFactory()).create_storage()
+        self._source_storage.connect()
 
         self._slack_message_sender = slack_message_sender
 
-        self._config = ProjectConfig.instance()
-        self._download_path = self._source_root
-        self._upload_path = self._destination_root
+        self._download_path = self._config.src_storage_root
+        self._upload_path = self._config.dst_storage_root
         self._assign_job = assign_job_lambda
 
         self._init()

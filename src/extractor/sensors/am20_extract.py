@@ -8,8 +8,9 @@ from decimal import Decimal
 from typing import Tuple
 
 from python_library.logger.app_logger import AppLogger
+from python_library.storage.s3.s3_storage_factory import S3StorageFactory
+from python_library.storage.s3.s3_storage_info_factory import S3StorageInfoFactory
 
-from config.storage_builder import StorageBuilder
 from extractor.extract_context import ExtractContext
 from extractor.extract import IExtract
 from pcap.message_buffer import PcapMessageBuffer
@@ -280,7 +281,8 @@ class Am20Extract(IExtract):
         original = original_p[0].decode("utf-8")
         dst_path = dst_p[0].decode("utf-8")
         start_time = start_p[0].decode("utf-8")
-        storage, _ = StorageBuilder.build_destination()
+        storage = S3StorageFactory(S3StorageInfoFactory()).create_storage()
+        storage.connect()
         Am20Extract._upload(storage, tmp_result, original, dst_path)
         Am20Extract._delete_tmp_files(tmp_result, original)
         storage.disconnect()

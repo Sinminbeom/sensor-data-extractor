@@ -77,7 +77,7 @@ sensor-data-extractor/
 │   │   ├── web_service/            # FastAPI web service + process (uvicorn)
 │   │   └── app_object.py           # MultiProcessManagerApp / FromCate
 │   ├── common/process/             # AppProcess (logger/config init)
-│   ├── config/                     # ProjectConfig / StorageBuilder / RedisConfig
+│   ├── config/                     # ProjectConfig / RedisConfig
 │   ├── consumer/                   # MessageConsumer / BulkMessageConsumer / ConsumerRegistry (큐 watch thread)
 │   ├── define/                     # module_type / vehicle_id
 │   ├── drivers/                    # 차량/sensor driver + native C++ source + vendor SDK 가 sensor 별 co-locate
@@ -129,20 +129,17 @@ sensor-data-extractor/
 
 ```ini
 [SRC_STORAGE]
-TYPE = LOCAL
-ROOT = /home/shinminbeom/infra_glue/personal/sensor-data-extractor/data/src
+ROOT = /oncx-dev-common-assets-bucket/test/split
 
 [DST_STORAGE]
-TYPE = LOCAL
-ROOT = /home/shinminbeom/infra_glue/personal/sensor-data-extractor/data/dst
+ROOT = /oncx-dev-common-assets-bucket/test/extracted
 ```
 
 | 필드 | 설명 |
 |------|------|
-| `TYPE` | 현재 `LOCAL` 만 지원. 추후 `GOOGLE_DRIVE` 등 [config/storage_builder.py](src/config/storage_builder.py) 에 분기 추가 예정 |
-| `ROOT` | `TYPE=LOCAL` 일 때 fs 절대 경로 (반드시 `/` 시작) |
+| `ROOT` | python-library `S3StorageClient` 내부 path 규약 (`/bucket/key`, 반드시 `/` 시작). worker/task_runner/server가 그대로 prefix로 사용 |
 
-내부적으로 [python_library.storage.LocalStorage](https://github.com/Sinminbeom/python-library) (`IStorage` 인터페이스) 를 통해 read/write/upload/get_file_list 한다.
+storage 구현체는 S3로 하드코딩 (worker / task_runner / server / am20_extract 가 직접 `S3StorageFactory` 로 인스턴스화). 내부적으로 [python_library.storage.S3Storage](https://github.com/Sinminbeom/python-library) (`IStorage` 인터페이스) 를 통해 read/write/upload/get_file_list 한다.
 
 ## 설치
 
@@ -241,4 +238,4 @@ uv run pytest
 | GStreamer | `gi.repository.Gst` (DeepStream) — `nvv4l2decoder` / `nvvideoconvert`. NVIDIA GPU + DeepStream SDK 필요 |
 | pybind11 | C++ converter 들이 Python module 로 노출되는 데 사용 |
 | CUDA toolkit | [tools/cuda/](tools/cuda) point cloud merge 빌드용 (선택) |
-| python-library `storage.LocalStorage` | 현재 유일한 storage 구현체. Google Drive 등 추가 시 [src/config/storage_builder.py](src/config/storage_builder.py) 의 `_build()` 분기만 추가 |
+| python-library `storage.S3Storage` | 유일한 storage 구현체. worker / task_runner / server / am20_extract 가 `S3StorageFactory` 로 직접 인스턴스화 |

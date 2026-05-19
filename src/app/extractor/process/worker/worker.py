@@ -5,11 +5,12 @@ from datetime import datetime
 from typing import Tuple
 
 from python_library.logger.app_logger import AppLogger
+from python_library.storage.s3.s3_storage_factory import S3StorageFactory
+from python_library.storage.s3.s3_storage_info_factory import S3StorageInfoFactory
 from python_library.storage.storage import IStorage
 
 from common.process.app_process import AppProcess
 from config.project_config import ProjectConfig
-from config.storage_builder import StorageBuilder
 from consumer.consumer_registry import ConsumerRegistry
 from consumer.message_consumer import MessageConsumer
 from drivers.vehicles import Vehicles
@@ -63,8 +64,13 @@ class ExtractorWorker(AppProcess):
         ProtocolMeta.initialize()
         self._vehicles = Vehicles.load(ProjectConfig.instance().vehicle_ids)
 
-        self._source_storage, self._source_storage_root = StorageBuilder.build_source()
-        self._destination_storage, self._destination_storage_root = StorageBuilder.build_destination()
+        cfg = ProjectConfig.instance()
+        self._source_storage = S3StorageFactory(S3StorageInfoFactory()).create_storage()
+        self._source_storage.connect()
+        self._source_storage_root = cfg.src_storage_root
+        self._destination_storage = S3StorageFactory(S3StorageInfoFactory()).create_storage()
+        self._destination_storage.connect()
+        self._destination_storage_root = cfg.dst_storage_root
 
     def action(self) -> None:
         try:

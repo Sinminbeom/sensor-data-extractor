@@ -36,11 +36,9 @@ class ProjectConfig(AppConfig):
         VOLUMES_PLACEHOLDER = "VOLUMES_PLACEHOLDER"
         TMP_PCAP_PATH = "TMP_PCAP_PATH"
         TMP_RESULT_PATH = "TMP_RESULT_PATH"
-    # python-library IStorage 도입 후 storage 종류는 TYPE 키 하나로 통합 (현재 LOCAL only).
-    # 추후 Google Drive 등 추가 시 TYPE 값에 따라 storage builder가 분기.
+
     class E_CATE_ELE_STORAGE(IENUM):
-        TYPE = "TYPE"   # 현재는 "LOCAL"만 지원. 추후 "GOOGLE_DRIVE" 등 추가 예정
-        ROOT = "ROOT"   # LocalStorage 기준 절대 경로 루트 (예: "/data/normalized")
+        ROOT = "ROOT"
 
     class E_CATE_ELE_REDIS(IENUM):
         IP = "IP"
@@ -87,15 +85,8 @@ class ProjectConfig(AppConfig):
         self.vehicle_ids = self._parse_delimited(self.get_config(
             ProjectConfig.E_CATE_TYPE.PROCESSING, ProjectConfig.E_CATE_ELE_PROCESSING.VEHICLE_IDS
         ))
-        # 본 구현은 storage 종류 + root 만 받고, 실제 path는 worker / extractor가 조합.
-        self.src_storage_type = self.get_config(
-            ProjectConfig.E_CATE_TYPE.SRC_STORAGE, ProjectConfig.E_CATE_ELE_STORAGE.TYPE
-        )
         self.src_storage_root = self.get_config(
             ProjectConfig.E_CATE_TYPE.SRC_STORAGE, ProjectConfig.E_CATE_ELE_STORAGE.ROOT
-        )
-        self.dst_storage_type = self.get_config(
-            ProjectConfig.E_CATE_TYPE.DST_STORAGE, ProjectConfig.E_CATE_ELE_STORAGE.TYPE
         )
         self.dst_storage_root = self.get_config(
             ProjectConfig.E_CATE_TYPE.DST_STORAGE, ProjectConfig.E_CATE_ELE_STORAGE.ROOT
