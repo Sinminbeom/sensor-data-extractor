@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import List
-# 차량 LiDAR/Camera driver 통합 인터페이스. ExtractorWorker가 on_start/on_stop/get_dst_path_list 호출.
+# 차량 LiDAR/Camera driver 통합 인터페이스. ExtractorModule가 on_start/on_stop/get_dst_path_list 호출.
 class IDriver(ABC):
     name: str = ""
 

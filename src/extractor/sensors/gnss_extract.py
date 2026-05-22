@@ -20,7 +20,7 @@ class GnssExtract(IExtract):
         dst_storage = ctx.destination_storage
 
         try:
-            src_path = ctx.protocol.get_src_path()
+            src_path = ctx.protocol.srcPath
             AppLogger.instance().info(f"Read GNSS File From Storage : {src_path}")
 
             message_buffer = GnssExtract._read_file(ctx)
@@ -64,7 +64,7 @@ class GnssExtract(IExtract):
             extracted = f"{tmp_result_path}{pcap_filename}.{E_GNSS_CPP_EXTRACTOR.FORMAT}"
 
             GnssExtract._filter_result(extracted, cnt)
-            target = f"{ctx.protocol.get_dst_path()}/{vehicle_id}/{os.path.basename(extracted)}"
+            target = f"{ctx.protocol.dstPath}/{vehicle_id}/{os.path.basename(extracted)}"
             dst_storage.upload(extracted, target)
             AppLogger.instance().info(f"Upload Result file : {extracted} => {target}")
 
@@ -79,7 +79,7 @@ class GnssExtract(IExtract):
     @staticmethod
     def _read_file(ctx: ExtractContext) -> PcapMessageBuffer:
         message_buffer = PcapMessageBuffer(
-            ctx.source_storage, ctx.protocol.get_src_path()
+            ctx.source_storage, ctx.protocol.srcPath
         )
         message_buffer.read_next_file()
         return message_buffer
@@ -93,7 +93,7 @@ class GnssExtract(IExtract):
         message_buffer.get_buffer().end_marking(end)
         picked = message_buffer.get_buffer().pick()
 
-        normalized = tmp_path + GnssExtract._filename_from_job_id(ctx.protocol.get_src_path())
+        normalized = tmp_path + GnssExtract._filename_from_job_id(ctx.protocol.srcPath)
         AppLogger.instance().info(f"save Gnss Normalized Tmp Pcap File : {normalized}")
         picked.save(normalized)
         return normalized
@@ -163,4 +163,4 @@ class GnssExtract(IExtract):
 
     @staticmethod
     def _vehicle_id(ctx: ExtractContext) -> str:
-        return os.path.dirname(ctx.protocol.get_src_path()).split("/")[2]
+        return os.path.dirname(ctx.protocol.srcPath).split("/")[2]

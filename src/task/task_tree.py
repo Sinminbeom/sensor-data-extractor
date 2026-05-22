@@ -2,55 +2,49 @@ from __future__ import annotations
 
 from typing import Iterable
 
-from protocol.job_packet import JobPacket
 from task.component import Component
-from task.vehicle_job_group import VehicleJobGroup
+from task.job_batch import JobBatch
 
 
 class TaskTree(Component):
-    """Composite root — 단일 date 단위로 VehicleJobGroup 하나를 보관.
+    """Composite root — (date, vehicle_id) 단위 잡 묶음.
 
-    구조상 (date → VehicleJobGroup) 매핑이 가능하지만 실 사용은 date 1개 고정이라
-    degenerate 형태로 평탄화. multi-date 가 필요해지면 dict 로 확장.
+    vehicle_id 별 JobBatch 직접 보관 (이전 VehicleJobGroup 중간 layer 제거).
     """
 
     def __init__(self, date: str, vehicle_id: str) -> None:
         self.date = date
         self.vehicle_id = vehicle_id
-        self._vehicle_jobs: VehicleJobGroup | None = None
+        self._batches: dict[str, JobBatch] = {}
 
     # --- Composite child management ---
 
-    def set_vehicle_jobs(self, group: VehicleJobGroup) -> None:
-        self._vehicle_jobs = group
+    def add_batch(self, vehicle_id: str, batch: JobBatch) -> None:
+        self._batches[vehicle_id] = batch
+
+    def get_batch(self, vehicle_id: str) -> JobBatch | None:
+        return self._batches.get(vehicle_id)
 
     def is_populated(self) -> bool:
-        return self._vehicle_jobs is not None
+        return len(self._batches) > 0
 
     def complete_job(self, vehicle_id: str, pcap_file: str) -> None:
-        if self._vehicle_jobs is None:
-            return
-        batch = self._vehicle_jobs.get_batch(vehicle_id)
+        batch = self._batches.get(vehicle_id)
         if batch is not None:
             batch.complete(pcap_file)
 
     # --- Component (Composite aggregation) ---
 
-    def iter_jobs(self) -> Iterable[JobPacket]:
-        if self._vehicle_jobs is None:
-            return iter(())
-        return self._vehicle_jobs.iter_jobs()
+    def iter_jobs(self) -> Iterable[str]:
+        for batch in self._batches.values():
+            yield from batch.iter_jobs()
 
     def enqueued_count(self) -> int:
-        if self._vehicle_jobs is None:
-            return 0
-        return self._vehicle_jobs.enqueued_count()
+        return sum(b.enqueued_count() for b in self._batches.values())
 
     def completed_count(self) -> int:
-        if self._vehicle_jobs is None:
-            return 0
-        return self._vehicle_jobs.completed_count()
+        return sum(b.completed_count() for b in self._batches.values())
 
     def clear(self) -> None:
-        if self._vehicle_jobs is not None:
-            self._vehicle_jobs.clear()
+        for b in self._batches.values():
+            b.clear()

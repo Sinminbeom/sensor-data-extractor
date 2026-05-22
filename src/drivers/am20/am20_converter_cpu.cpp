@@ -69,7 +69,8 @@ public:
     void addSignalWatch() {
         bus = gst_pipeline_get_bus(GST_PIPELINE(pipeline));
         gst_bus_add_signal_watch(bus);
-        g_signal_connect_data(bus, "message", G_CALLBACK(busCallback), loop, NULL, (GConnectFlags) 0);
+        // user_data 로 this 전달 — busCallback 에서 AM20Converter* 로 캐스팅하므로 일치해야 함.
+        g_signal_connect_data(bus, "message", G_CALLBACK(busCallback), this, NULL, (GConnectFlags) 0);
     }
 
     void clear() {
@@ -79,13 +80,15 @@ public:
         frameNumber = 0;
 
         if (callback){
+            // g_main_loop thread 는 Python GIL 미보유 — callback 호출 전 acquire 필수.
+            py::gil_scoped_acquire gil;
             callback(tmpResultSavedPath, originalFilename, dstPath, startTime);
         }
     }
 
     static gboolean busCallback(GstBus *bus, GstMessage *message, gpointer data) {
         AM20Converter* converter = static_cast<AM20Converter*>(data);
-        GMainLoop* loop = static_cast<GMainLoop*>(data);
+        const gchar* src_name = GST_OBJECT_NAME(message->src);
 
         switch (GST_MESSAGE_TYPE (message)) {
             case GST_MESSAGE_ERROR:{
@@ -93,17 +96,34 @@ public:
                 gchar *debug;
 
                 gst_message_parse_error (message, &err, &debug);
-                g_print ("Error: %s\n", err->message);
+                g_printerr ("[AM20 GST] ERROR from %s: %s (debug=%s)\n", src_name, err->message, debug ? debug : "");
                 g_error_free (err);
                 g_free (debug);
 
                 converter->clear();
                 break;
             }
+            case GST_MESSAGE_WARNING:{
+                GError *err; gchar *debug;
+                gst_message_parse_warning (message, &err, &debug);
+                g_printerr ("[AM20 GST] WARNING from %s: %s (debug=%s)\n", src_name, err->message, debug ? debug : "");
+                g_error_free(err); g_free(debug);
+                break;
+            }
             case GST_MESSAGE_EOS:
+                g_printerr ("[AM20 GST] EOS from %s\n", src_name);
                 converter->clear();
                 break;
+            case GST_MESSAGE_STATE_CHANGED: {
+                GstState old_state, new_state, pending;
+                gst_message_parse_state_changed(message, &old_state, &new_state, &pending);
+                g_printerr ("[AM20 GST] STATE %s: %s -> %s\n", src_name,
+                            gst_element_state_get_name(old_state),
+                            gst_element_state_get_name(new_state));
+                break;
+            }
             default:
+                g_printerr ("[AM20 GST] msg %s from %s\n", GST_MESSAGE_TYPE_NAME(message), src_name);
                 break;
         }
 
@@ -167,15 +187,19 @@ public:
     }
 
     gboolean sendPacket(gpointer user_data) {
+        g_printerr("[AM20 GST] sendPacket start, buffers.size=%zu\n", buffers.size());
+        int pushed = 0;
         for (auto buffer : buffers) {
-
             GstFlowReturn ret = gst_app_src_push_buffer(GST_APP_SRC(appsrc), buffer);
             if (ret != GST_FLOW_OK) {
+                g_printerr("[AM20 GST] push_buffer failed (pushed=%d, ret=%d), sending EOS\n", pushed, ret);
                 gst_app_src_end_of_stream(GST_APP_SRC(appsrc));
                 return FALSE;
             }
+            pushed++;
         }
         buffers.clear();
+        g_printerr("[AM20 GST] sendPacket done, pushed=%d, sending EOS\n", pushed);
         gst_app_src_end_of_stream(GST_APP_SRC(appsrc));
         return FALSE;
     }
@@ -224,6 +248,8 @@ public:
     }
 
     void join() {
+        // Python 호출자는 GIL 보유 상태로 들어옴 — async thread 가 GIL 을 acquire 할 수 있도록 release.
+        py::gil_scoped_release release;
         myFuture.get();
     }
 

@@ -37,7 +37,7 @@ class At128Extract(IExtract):
         vehicles = ctx.vehicles
 
         try:
-            src_path = ctx.protocol.get_src_path()
+            src_path = ctx.protocol.srcPath
             AppLogger.instance().info(f"Read At128 File From Storage -> {src_path}")
 
             message_buffer = At128Extract._read_file(ctx)
@@ -81,7 +81,7 @@ class At128Extract(IExtract):
             }
 
             driver_key = At128Extract._DRIVER_BY_SENSOR[sensor_name]
-            vehicle_id = ctx.protocol.get_vehicle_id() or "E100_4"
+            vehicle_id = ctx.protocol.vehicleId or "E100_4"
             drivers = vehicles.get(vehicle_id)
             driver = drivers.get(driver_key)
             driver.on_start(params)
@@ -92,7 +92,7 @@ class At128Extract(IExtract):
 
             At128Extract._upload(
                 tmp_result_path, ctx, src_path, extracted_files, dst_storage,
-                ctx.protocol.get_dst_path()
+                ctx.protocol.dstPath
             )
             At128Extract._delete_tmp_files(extracted_files)
 
@@ -105,7 +105,7 @@ class At128Extract(IExtract):
     @staticmethod
     def _read_file(ctx: ExtractContext) -> PcapMessageBuffer:
         message_buffer = PcapMessageBuffer(
-            ctx.source_storage, ctx.protocol.get_src_path(), At128Filter(At128PayloadData)
+            ctx.source_storage, ctx.protocol.srcPath, At128Filter(At128PayloadData)
         )
         message_buffer.read_previous_file()
         message_buffer.read_next_file()
@@ -176,7 +176,7 @@ class At128Extract(IExtract):
 
     @staticmethod
     def _vehicle_id(ctx: ExtractContext) -> str:
-        return os.path.dirname(ctx.protocol.get_src_path()).split("/")[2]
+        return os.path.dirname(ctx.protocol.srcPath).split("/")[2]
 
     @staticmethod
     def _delete_tmp_files(files) -> None:

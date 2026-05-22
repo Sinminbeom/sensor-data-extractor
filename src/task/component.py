@@ -3,13 +3,11 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Iterable
 
-from protocol.job_packet import JobPacket
-
 
 class Component(ABC):
 
     @abstractmethod
-    def iter_jobs(self) -> Iterable[JobPacket]: ...
+    def iter_jobs(self) -> Iterable[str]: ...
 
     @abstractmethod
     def enqueued_count(self) -> int: ...

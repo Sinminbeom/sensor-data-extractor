@@ -4,10 +4,10 @@ import atexit
 from collections import deque
 
 from config.project_config import ProjectConfig
+from define.process_name import EXTRACTOR_MANAGER, WEB_SERVICE
 from protocol.pk_ui_job import PkUiJob
 from protocol.pk_ui_job_delete import PkUiJobDelete
-from protocol.pk_ui_job_info import PkUiJobInfo
-from protocol.protocol_meta import E_PROTOCOL_ID
+from protocol.protocol_meta import E_PROTOCOL_ID, ProtocolMeta
 from protocol.protocol_utils import ProtocolUtils
 from task.redis_job_list import RedisJobListStore
 from task.task_tree import TaskTree
@@ -17,12 +17,10 @@ from utils.json_util import JsonUtil
 class TaskRegistry:
     """잡 sequence_id 별 TaskTree 순서 컨테이너.
 
-    Composite 트리(TaskTree → VehicleJobGroup → JobBatch) 의 root 들을 FIFO 로
+    Composite 트리(TaskTree → JobBatch) 의 root 들을 FIFO 로
     묶고, Redis JOB_LIST_QUEUE 와 동기화해 영속화한다. Redis 접근은 RedisJobListStore 에
     위임 — 본 클래스는 deque + Store 호출만 담당.
     """
-
-    SENDER_NAME = "TaskRegistry"
 
     def __init__(self, job_list_store: RedisJobListStore) -> None:
         self._queue: deque[tuple[str, TaskTree]] = deque()
@@ -44,12 +42,9 @@ class TaskRegistry:
     def push(self, task_job: PkUiJob) -> str:
         seq = ProtocolUtils.instance().get_sequence_id_now()
         task_tree = TaskTree(task_job.date, task_job.vehicleId)
-        info = PkUiJobInfo(
-            E_PROTOCOL_ID.UI_JOB_LIST.value,
-            TaskRegistry.SENDER_NAME,
-            task_job.date,
-            task_job.vehicleId,
-            seq,
+        info = ProtocolMeta.instance().get_factory(E_PROTOCOL_ID.UI_JOB_LIST.value)(
+            EXTRACTOR_MANAGER, WEB_SERVICE,
+            task_job.date, task_job.vehicleId, seq,
         )
         self._queue.append((seq, task_tree))
         self._store.push(JsonUtil.to_json(info))
@@ -80,12 +75,9 @@ class TaskRegistry:
             else:
                 task_tree.clear()
 
-            delete_info = PkUiJobInfo(
-                E_PROTOCOL_ID.UI_JOB_LIST.value,
-                TaskRegistry.SENDER_NAME,
-                task_tree.date,
-                task_tree.vehicle_id,
-                seq,
+            delete_info = ProtocolMeta.instance().get_factory(E_PROTOCOL_ID.UI_JOB_LIST.value)(
+                EXTRACTOR_MANAGER, WEB_SERVICE,
+                task_tree.date, task_tree.vehicle_id, seq,
             )
             self._store.delete(JsonUtil.to_json(delete_info))
             return

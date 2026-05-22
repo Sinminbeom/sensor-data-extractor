@@ -104,7 +104,10 @@ class ProjectConfig(AppConfig):
         ))
 
     @staticmethod
-    def _parse_delimited(raw: str, delim: str = "|") -> list[str]:
+    def _parse_delimited(raw, delim: str = "|") -> list[str]:
+        # AppConfig 가 multi-value 는 list, single-value 는 str 로 반환 — 양쪽 다 처리.
         if not raw:
             return []
+        if isinstance(raw, list):
+            return [s.strip() for s in raw if s.strip()]
         return [s.strip() for s in raw.split(delim) if s.strip()]

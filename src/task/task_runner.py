@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import time
-from random import shuffle
 from typing import Callable
 
 from python_library.logger.app_logger import AppLogger
@@ -11,15 +10,16 @@ from python_library.storage.storage import IStorage
 from python_library.thread.thread import abThread
 
 from config.project_config import ProjectConfig
-from protocol.job_packet import JobPacket
+from define.process_name import EXTRACTOR_MANAGER
+from protocol.message import abMessage
 from protocol.pk_ui_job_info import PkUiJobInfo
+from protocol.protocol_meta import E_PROTOCOL_ID, ProtocolMeta
 from sensor_category.enum_sensor import E_SENSOR_TYPE
 from sensor_category.sensor_registry import E_CATE, SensorRegistry
 from task.job_batch import JobBatch
 from task.redis_job_list import RedisJobListStore
 from task.task_registry import TaskRegistry
 from task.task_tree import TaskTree
-from task.vehicle_job_group import VehicleJobGroup
 from utils.json_util import JsonUtil
 
 
@@ -27,18 +27,18 @@ class TaskRunner(abThread):
     """TaskRegistry lifecycle 컨트롤러 (자체가 task loop thread).
 
     TaskRegistry 가 sequence_id 매핑 + Redis 동기화만 담당하는 반면, 본 클래스는
-    storage 에서 pcap 파일 walk → JobPacket 트리 구성 → worker dispatch → 완료 polling
+    storage 에서 pcap 파일 walk → JobRequest 트리 구성 → worker dispatch → 완료 polling
     까지 한 task 의 전체 사이클을 관리한다.
     """
 
-    SENDER_NAME = "TaskRunner"
     POLL_INTERVAL_IDLE = 0.1
 
     def __init__(
         self,
         slack_message_sender,
         redis_job_list_store: RedisJobListStore,
-        assign_job_lambda: Callable[[JobPacket], None],
+        next_target_fn: Callable[[str], str],
+        dispatch_fn: Callable[[str, abMessage], None],
     ) -> None:
         super().__init__()
         self._registry = TaskRegistry(redis_job_list_store)
@@ -51,7 +51,8 @@ class TaskRunner(abThread):
 
         self._download_path = self._config.src_storage_root
         self._upload_path = self._config.dst_storage_root
-        self._assign_job = assign_job_lambda
+        self._next_target = next_target_fn
+        self._dispatch = dispatch_fn
 
         self._init()
 
@@ -74,8 +75,7 @@ class TaskRunner(abThread):
     def action(self) -> None:
         while True:
             seq, task_tree = self._wait_for_next_task()
-            self._populate_task(seq, task_tree)
-            self._assign_all_jobs(task_tree)
+            self._populate_task(seq, task_tree)   # populate 가 곧 dispatch
             self._wait_until_complete(task_tree)
             self._finalize_task()
 
@@ -91,17 +91,15 @@ class TaskRunner(abThread):
         """vehicle_id 가 ALL 이면 모든 차량, 아니면 단일 차량을 walk 해서 잡 등록."""
         date = task_tree.date
         vehicle_id = task_tree.vehicle_id
-        vehicle_jobs = VehicleJobGroup()
         if vehicle_id == E_SENSOR_TYPE.ALL:
             for v_id in self._list_immediate_subdirs(self._download_path):
-                self._build_job_batch(vehicle_jobs, v_id, date, seq)
+                self._build_job_batch(task_tree, v_id, date, seq)
         else:
-            self._build_job_batch(vehicle_jobs, vehicle_id, date, seq)
-        task_tree.set_vehicle_jobs(vehicle_jobs)
+            self._build_job_batch(task_tree, vehicle_id, date, seq)
 
     def _build_job_batch(
         self,
-        vehicle_jobs: VehicleJobGroup,
+        task_tree: TaskTree,
         vehicle_id: str,
         date: str,
         seq: str,
@@ -138,18 +136,15 @@ class TaskRunner(abThread):
                     pcap_path = sf.get_file_path()
                     file_name = sf.get_file_name()
                     job_id = f"{seq}_{file_name}"
-                    batch.add(
-                        JobPacket(
-                            TaskRunner.SENDER_NAME,
-                            job_id,
-                            vehicle_id,
-                            sensor_type,
-                            module_type,
-                            pcap_path,
-                            self._upload_path,
-                        )
+                    target = self._next_target(sensor_type)
+                    job = ProtocolMeta.instance().get_factory(E_PROTOCOL_ID.JOB_REQUEST.value)(
+                        EXTRACTOR_MANAGER, target,
+                        job_id, vehicle_id, sensor_type, module_type,
+                        pcap_path, self._upload_path,
                     )
-        vehicle_jobs.add_batch(vehicle_id, batch)
+                    self._dispatch(target, job)   # routing + dispatch
+                    batch.add(job_id)             # batch 에는 job_id 만 audit
+        task_tree.add_batch(vehicle_id, batch)
 
     def _list_immediate_subdirs(self, path: str) -> list[str]:
         # python-library IStorage 는 디렉터리 entry 를 직접 반환하지 않으므로,
@@ -166,14 +161,6 @@ class TaskRunner(abThread):
                 names.add(first)
         return sorted(names)
 
-    def _assign_all_jobs(self, task_tree: TaskTree) -> None:
-        # 트리 전체 traversal 후 워커 분산을 위해 shuffle.
-        # Composite traversal 결과를 caller 에서 셔플하는 게 패턴 정합성에 맞음.
-        jobs = list(task_tree.iter_jobs())
-        shuffle(jobs)
-        for job in jobs:
-            self._assign_job(job)
-
     def _wait_until_complete(self, task_tree: TaskTree) -> None:
         while not task_tree.is_complete():
             time.sleep(TaskRunner.POLL_INTERVAL_IDLE)
@@ -184,8 +171,8 @@ class TaskRunner(abThread):
             return
         success = JsonUtil.from_json(success_json, PkUiJobInfo)
         AppLogger.instance().info(
-            f"[{TaskRunner.SENDER_NAME}] Success\n"
-            f"Date : {success.get_date()}\n"
-            f"VehicleId : {success.get_vehicle_id()}\n"
-            f"SequenceId : {success.get_sequence_id()}"
+            f"[{EXTRACTOR_MANAGER}] Success\n"
+            f"Date : {success.date}\n"
+            f"VehicleId : {success.vehicleId}\n"
+            f"SequenceId : {success.sequenceId}"
         )

@@ -9,15 +9,15 @@ from python_library.logger.app_logger import AppLogger
 from python_library.thread.thread import abThreading
 
 from config.redis_config import RedisConfig
-# Redis COM_QUEUE listener. 큐 추상화(ICollection) 를 걷어내고 redis-py 직접 사용.
+# Redis COM_QUEUE consumer. 큐 추상화(ICollection) 를 걷어내고 redis-py 직접 사용.
 #
 # 책임: 별도 thread 에서 COM_QUEUE 의 모든 메시지를 한 번에 pop (rpop loop) 해서 callback 으로 전달.
 #
-# 큐 분리 정리 (publisher / subscriber / job_list_store):
-#   - RedisPublisher    : COM_QUEUE lpush
-#   - RedisSubscriber   : COM_QUEUE rpop (본 클래스)
-#   - RedisJobListStore : JOB_LIST_QUEUE 영속화 (task/redis_job_list.py)
-class RedisSubscriber(abThreading):
+# 큐 분리 정리:
+#   - RedisQueueProducer : COM_QUEUE lpush                       (Web → Manager)
+#   - RedisQueueConsumer : COM_QUEUE rpop (본 클래스)            (Manager 측 thread)
+#   - RedisJobListStore  : JOB_LIST_QUEUE 영속화                 (task/redis_job_list.py)
+class RedisQueueConsumer(abThreading):
     POLL_INTERVAL_EMPTY = 0.1
     POLL_INTERVAL_BUSY = 0.0
 
@@ -54,16 +54,16 @@ class RedisSubscriber(abThreading):
         while self._is_running:
             bulk = self._pop_all()
             if not bulk:
-                time.sleep(RedisSubscriber.POLL_INTERVAL_EMPTY)
+                time.sleep(RedisQueueConsumer.POLL_INTERVAL_EMPTY)
                 continue
             try:
                 self._on_bulk(bulk)
             except Exception as e:
-                AppLogger.instance().exception(f"RedisSubscriber callback failed: {e}")
-            time.sleep(RedisSubscriber.POLL_INTERVAL_BUSY)
+                AppLogger.instance().exception(f"RedisQueueConsumer callback failed: {e}")
+            time.sleep(RedisQueueConsumer.POLL_INTERVAL_BUSY)
 
     def _pop_all(self) -> list[str]:
-        # 단일 subscriber 가정 — atomic 보장 안 됨 (multi consumer 시 race).
+        # 단일 consumer 가정 — atomic 보장 안 됨 (multi consumer 시 race).
         assert self._client is not None
         name = self._config.com_queue_with_mode(None)
         size = self._client.llen(name)
