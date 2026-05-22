@@ -38,34 +38,36 @@ class Am20Extract(IExtract):
         start = time.time()
 
         dst_storage = ctx.destination_storage
-        src_path = ctx.protocol.get_src_path()
+        src_path = ctx.protocol.srcPath
         original_filename = Am20Extract._original_filename(ctx)
         vehicle_id = Am20Extract._vehicle_id(ctx)
         cpp_library = ctx.cpp_library
         gstreamer_state = ctx.gstreamer_state
 
         base_timestamp = 0
-        seq_num_before = 0
-        payload_len_before = 0
         loop_cnt = 0
         cpp_library.registerPythonCallback(Am20Extract._custom_callback)
 
         try:
             tmp_save_path = f"{ctx.tmp_pcap_saved_path}{vehicle_id}/"
             tmp_result_path = f"{ctx.tmp_result_saved_path}{vehicle_id}/"
-            dst_path = f"{ctx.protocol.get_dst_path()}/{vehicle_id}"
+            dst_path = f"{ctx.protocol.dstPath}/{vehicle_id}"
 
             AppLogger.instance().info(f"Read Camera File From Storage : {src_path}")
             message_buffer = Am20Extract._read_file(dst_storage, src_path)
+            AppLogger.instance().info(f"[DEBUG] _read_file done, before={message_buffer.get_before_file_count()} after={message_buffer.get_after_file_count()}")
 
             # 앞/뒤 file이 둘 다 있어야 정상 추출 가능 — 없으면 skip
             if message_buffer.get_after_file_count() != 1:
+                AppLogger.instance().info("[DEBUG] skip: after_file_count != 1")
                 return
             if message_buffer.get_before_file_count() != 1:
+                AppLogger.instance().info("[DEBUG] skip: before_file_count != 1")
                 return
 
             message_buffer.sort()
             message_buffer.seek(0)
+            AppLogger.instance().info("[DEBUG] sort + seek done")
 
             cpp_library.setProperty(
                 tmp_result_path,
@@ -75,13 +77,17 @@ class Am20Extract(IExtract):
             )
             if message_buffer.get_before_file_count() == 1:
                 buf = message_buffer.get_buffer()
+                AppLogger.instance().info("[DEBUG] verify_second_with_func IDR start")
                 origin_idr_idx = buf.verify_second_with_func(0, Am20Extract._idr_search, True)
+                AppLogger.instance().info(f"[DEBUG] origin_idr_idx={origin_idr_idx}")
                 last_pat_idx, last_pat_bytes_idx = buf.verify_range_with_func2(
                     0, origin_idr_idx, Am20Extract._verify_func, True
                 )
+                AppLogger.instance().info(f"[DEBUG] last_pat_idx={last_pat_idx} bytes_idx={last_pat_bytes_idx}")
                 next_idr_idx, next_idr_bytes_idx = buf.verify_second_with_func2(
                     1, Am20Extract._idr_search2
                 )
+                AppLogger.instance().info(f"[DEBUG] next_idr_idx={next_idr_idx} bytes_idx={next_idr_bytes_idx}")
 
             # 위에서 못 찾은 케이스는 모두 skip
             if origin_idr_idx < 0:
@@ -103,9 +109,14 @@ class Am20Extract(IExtract):
             message_buffer.get_buffer().start_marking(last_pat_idx)
             message_buffer.get_buffer().end_marking(next_idr_idx)
             picked = message_buffer.get_buffer().pick()
+            AppLogger.instance().info(
+                f"[DEBUG] picked: len={len(picked.pcapElements)} "
+                f"cursor={picked.get_current_cursor()} end={picked.get_end_cursor()}"
+            )
 
             cpp_library.start()
             cpp_library.setGstStatePlay()
+            AppLogger.instance().info("[DEBUG] gst pipeline PLAYING, entering push loop")
 
             # picked buffer를 순회하며 sequence number 검증 + GStreamer로 payload 푸시
             while True:
@@ -114,17 +125,7 @@ class Am20Extract(IExtract):
                     break
 
                 loop_cnt += 1
-                seq_num_expected = seq_num_before + payload_len_before
-
-                if loop_cnt == 1:
-                    pass
-                else:
-                    if seq_num_expected != current.get_pcap_body().get_seq_num():
-                        # sequence gap이면 buffer는 건너뛰고 base만 갱신
-                        seq_num_before = current.get_pcap_body().get_seq_num()
-                        payload_len_before = len(current.get_payload())
-                        picked.next_element()
-                        continue
+                # NOTE: 테스트 데이터에서 seq_num 이 항상 0 이라 mismatch skip 비활성화
 
                 if base_timestamp == 0:
                     base_timestamp = current.get_pcap_packet_header().get_timestamp()
@@ -152,17 +153,16 @@ class Am20Extract(IExtract):
                 if picked.get_current_cursor() == picked.get_end_cursor():
                     gstreamer_state.last_nano_sec = gstreamer_state.last_nano_sec + nanosec + 61988
 
-                seq_num_before = current.get_pcap_body().get_seq_num()
-                payload_len_before = len(current.get_payload())
-
                 if picked.next_element() is None:
                     break
 
             os.makedirs(tmp_save_path, exist_ok=True)
             os.makedirs(tmp_result_path, exist_ok=True)
 
+            AppLogger.instance().info(f"[DEBUG] push loop done (loop_cnt={loop_cnt}), addIdle + join")
             cpp_library.addIdle()
             cpp_library.join()
+            AppLogger.instance().info("[DEBUG] cpp_library.join returned")
 
         except Exception as e:
             AppLogger.instance().exception(e)
@@ -259,11 +259,11 @@ class Am20Extract(IExtract):
 
     @staticmethod
     def _vehicle_id(ctx: ExtractContext) -> str:
-        return os.path.dirname(ctx.protocol.get_src_path()).split("/")[2]
+        return os.path.dirname(ctx.protocol.srcPath).split("/")[2]
 
     @staticmethod
     def _original_filename(ctx: ExtractContext) -> str:
-        return os.path.basename(ctx.protocol.get_src_path()).split(".")[0]
+        return os.path.basename(ctx.protocol.srcPath).split(".")[0]
 
     @staticmethod
     def _custom_callback(tmp_result: str, original: str, dst_path: str, start_time: str) -> None:

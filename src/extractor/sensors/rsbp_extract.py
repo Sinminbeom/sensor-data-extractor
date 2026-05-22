@@ -48,7 +48,7 @@ class RsbpExtract(IExtract):
         vehicles = ctx.vehicles
 
         try:
-            src_path = ctx.protocol.get_src_path()
+            src_path = ctx.protocol.srcPath
             AppLogger.instance().info(f"Read Rsbp File From Storage -> {src_path}")
 
             message_buffer = RsbpExtract._read_file(ctx)
@@ -92,7 +92,7 @@ class RsbpExtract(IExtract):
             }
 
             driver_key = RsbpExtract._DRIVER_BY_SENSOR[sensor_name]
-            vehicle_id = ctx.protocol.get_vehicle_id() or "E100_4"
+            vehicle_id = ctx.protocol.vehicleId or "E100_4"
             drivers = vehicles.get(vehicle_id)
             driver = drivers.get(driver_key)
             driver.on_start(params)
@@ -103,7 +103,7 @@ class RsbpExtract(IExtract):
 
             RsbpExtract._upload(
                 tmp_result_path, ctx, src_path, extracted_files, dst_storage,
-                ctx.protocol.get_dst_path()
+                ctx.protocol.dstPath
             )
             RsbpExtract._delete_tmp_files(extracted_files)
 
@@ -116,7 +116,7 @@ class RsbpExtract(IExtract):
     @staticmethod
     def _read_file(ctx: ExtractContext) -> PcapMessageBuffer:
         message_buffer = PcapMessageBuffer(
-            ctx.source_storage, ctx.protocol.get_src_path(),
+            ctx.source_storage, ctx.protocol.srcPath,
             BpearlFilter(BpearlPayloadData),
         )
         message_buffer.read_previous_file()
@@ -248,7 +248,7 @@ class RsbpExtract(IExtract):
 
     @staticmethod
     def _vehicle_id(ctx: ExtractContext) -> str:
-        return os.path.dirname(ctx.protocol.get_src_path()).split("/")[2]
+        return os.path.dirname(ctx.protocol.srcPath).split("/")[2]
 
     @staticmethod
     def _delete_tmp_files(files) -> None:

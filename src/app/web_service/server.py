@@ -12,11 +12,11 @@ from python_library.storage.storage import IStorage
 
 from config.project_config import ProjectConfig
 from config.redis_config import RedisConfig
+from define.process_name import EXTRACTOR_MANAGER, WEB_SERVICE
 from task.redis_job_list import RedisJobListStore
-from messaging.redis_publisher import RedisPublisher
-from protocol.pk_ui_job import PkUiJob
+from notification.redis_queue_producer import RedisQueueProducer
 from protocol.pk_ui_job_delete import PkUiJobDeleteHelper
-from protocol.protocol_meta import E_PROTOCOL_ID, ProtocolMeta  # noqa: F401
+from protocol.protocol_meta import E_PROTOCOL_ID, ProtocolMeta
 from utils.json_util import JsonUtil
 # 응답 헬퍼. FastAPI는 dict/list/dataclass를 자동 JSON 직렬화하므로 별도 jsonify 불필요.
 @dataclass
@@ -32,7 +32,6 @@ class ResponsePayload:
 # FastAPI 로 교체. 동작 contract는 그대로 — 모든 endpoint가 동기 GET이고 JSON 반환.
 # 디렉터리 entry를 직접 다루지 않으므로, get_file_list 결과에서 첫 segment를 추출해 디렉터리를 흉내낸다.
 class WebServiceServer:
-    NAME = "UI"
     MARK_TEST = "test"
     MARK_TEST_PATH = "-test"
 
@@ -48,8 +47,8 @@ class WebServiceServer:
 
         # Redis: COM_QUEUE 발행 + JOB_LIST_QUEUE 조회 (책임별 분리된 두 클래스)
         redis_config = RedisConfig(self._config)
-        self._redis_publisher = RedisPublisher(redis_config)
-        self._redis_publisher.connect()
+        self._redis_producer = RedisQueueProducer(redis_config)
+        self._redis_producer.connect()
         self._redis_job_list = RedisJobListStore(redis_config)
         self._redis_job_list.connect()
 
@@ -149,17 +148,15 @@ class WebServiceServer:
         return sorted(vehicles)
 
     def _publish_ui_job_request(self, date: str, vehicle_id: str) -> None:
-        pk = PkUiJob(
-            E_PROTOCOL_ID.UI_JOB_REQUEST.value,
-            WebServiceServer.NAME,
-            date,
-            vehicle_id,
+        pk = ProtocolMeta.instance().get_factory(E_PROTOCOL_ID.UI_JOB_REQUEST.value)(
+            WEB_SERVICE, EXTRACTOR_MANAGER,
+            date, vehicle_id,
         )
-        self._redis_publisher.publish(JsonUtil.to_json(pk))
+        self._redis_producer.produce(JsonUtil.to_json(pk))
 
     def _publish_ui_job_delete(self, job_info_str: str) -> None:
         delete_packet = PkUiJobDeleteHelper.factory_jenkins_from(job_info_str)
-        self._redis_publisher.publish(JsonUtil.to_json(delete_packet))
+        self._redis_producer.produce(JsonUtil.to_json(delete_packet))
 
     def run(self, host: str = "0.0.0.0", port: int = 5001, debug: bool = False) -> None:
         # debug 플래그는 uvicorn의 reload (개발용)으로 매핑.

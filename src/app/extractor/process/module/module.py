@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from datetime import datetime
+from queue import Empty
 from typing import Tuple
 
 from python_library.logger.app_logger import AppLogger
@@ -11,24 +12,25 @@ from python_library.storage.storage import IStorage
 
 from common.process.app_process import AppProcess
 from config.project_config import ProjectConfig
-from consumer.consumer_registry import ConsumerRegistry
-from consumer.message_consumer import MessageConsumer
+from define.process_name import EXTRACTOR_MANAGER
 from drivers.vehicles import Vehicles
 from extractor.extract_context import ExtractContext
+from extractor.extract_registry import ExtractRegistry
 from extractor.gstreamer.cpp_library import build_cpp_library_for_camera
 from extractor.gstreamer.state import GstreamerState
-from protocol.error_noti import ErrorNoti
-from protocol.job_complete import JobComplete
-from protocol.job_packet import JobPacket
-from protocol.protocol_meta import E_PROTOCOL_ID, E_RECEIVER, ProtocolMeta
+from protocol.job_request import JobRequest
+from protocol.protocol_meta import E_PROTOCOL_ID, ProtocolMeta
 
 
-class ExtractorWorker(AppProcess):
-    """JobPacket 수신 → 모듈 타입별 추출 → JobComplete/ErrorNoti 회신.
+_POLL_INTERVAL_EMPTY = 0.1
 
-    python-library MultiProcessManager 가 shared queue 를 자동 inject:
-      - self._shared_queue[self.name] : manager → 이 worker 잡 큐 (RECV)
-      - self._shared_job_queue        : worker → manager 회신 큐 (SEND)
+
+class ExtractorModule(AppProcess):
+    """JobRequest 수신 → 모듈 타입별 추출 → JobComplete/ErrorNoti 회신.
+
+    python-library MultiProcessManager 가 shared queue 자동 inject:
+      - self._shared_queue[self.name] : manager → module 잡 큐 (RECV)
+      - self._shared_job_queue        : module → manager 회신 큐 (SEND)
     """
 
     def __init__(self, app_name: str, process_name: str) -> None:
@@ -40,10 +42,6 @@ class ExtractorWorker(AppProcess):
         self._disk_select_index = 0
         self._source_storage: IStorage | None = None
         self._destination_storage: IStorage | None = None
-        self._source_storage_root: str = ""
-        self._destination_storage_root: str = ""
-
-        self._consumer_registry: ConsumerRegistry | None = None
         self._gstreamer_state = GstreamerState()
         self._vehicles: Vehicles | None = None
 
@@ -54,23 +52,11 @@ class ExtractorWorker(AppProcess):
         self._tmp_result = cfg.tmp_result_path
 
     def _init_runtime(self) -> None:
-        self._consumer_registry = ConsumerRegistry()
-        # shared_queue[self.name] = manager 가 push 한 잡 큐. comm 회신은 self._shared_job_queue 로 SEND 전용.
-        self._consumer_registry.register(
-            "job",
-            MessageConsumer(self._shared_queue[self.name], lambda packet: self._dispatch(packet)),
-        )
-
-        ProtocolMeta.initialize()
         self._vehicles = Vehicles.load(ProjectConfig.instance().vehicle_ids)
-
-        cfg = ProjectConfig.instance()
         self._source_storage = S3StorageFactory(S3StorageInfoFactory()).create_storage()
         self._source_storage.connect()
-        self._source_storage_root = cfg.src_storage_root
         self._destination_storage = S3StorageFactory(S3StorageInfoFactory()).create_storage()
         self._destination_storage.connect()
-        self._destination_storage_root = cfg.dst_storage_root
 
     def action(self) -> None:
         try:
@@ -78,11 +64,17 @@ class ExtractorWorker(AppProcess):
             self._init_config()
             self._init_runtime()
 
-            AppLogger.instance().info(f"[{self.name}] ExtractorWorker start")
-            self._consumer_registry.start_all()
+            AppLogger.instance().info(f"[{self.name}] ExtractorModule start")
 
+            # shared_queue[self.name] 을 직접 폴링 — JobRequest 만 받음 (single message type).
+            job_queue = self._shared_queue[self.name]
             while not self.is_stop():
-                time.sleep(0.01)
+                try:
+                    raw = job_queue.get_nowait()
+                except Empty:
+                    time.sleep(_POLL_INTERVAL_EMPTY)
+                    continue
+                self._handle_job_request(JobRequest.from_json(raw))
 
         except Exception as e:
             AppLogger.instance().exception(e)
@@ -104,23 +96,11 @@ class ExtractorWorker(AppProcess):
     def get_process_number(self) -> int:
         return int(self.name.split("_")[-1])
 
-    def get_name(self) -> str:
-        return self.name
+    # --- handler ---
 
-    # --- protocol dispatch ---
-
-    def _dispatch(self, packet) -> None:
-        # replayer 패턴: ProtocolMeta가 (process, packet) 시그니처 handler를 반환 → 호출.
-        handler = ProtocolMeta.get_receive_handler(
-            packet.get_protocol_id(), E_RECEIVER.EXTRACTOR_WORKER
-        )
-        handler(self, packet)
-
-    # --- receive handlers (ProtocolHandler.worker_* 가 호출) ---
-
-    def handle_job_request(self, packet: JobPacket) -> None:
+    def _handle_job_request(self, packet: JobRequest) -> None:
         try:
-            AppLogger.instance().info(f"JOB START -> Job ID : {packet.get_job_id()}")
+            AppLogger.instance().info(f"JOB START -> Job ID : {packet.jobId}")
 
             tmp_pcap_path, tmp_result_path = self._get_tmp_saved_path()
             ctx = ExtractContext(
@@ -135,34 +115,26 @@ class ExtractorWorker(AppProcess):
                 cpp_library=build_cpp_library_for_camera(self.get_process_number()),
             )
 
-            extract_fn = ProtocolMeta.get_extractor(
-                E_PROTOCOL_ID.JOB_REQUEST, packet.get_module_type()
-            )
-            extract_fn(ctx)
+            ExtractRegistry.extract(packet.moduleType, ctx)
 
-            self._send(JobComplete(
-                self.name,
-                packet.get_job_id(),
-                packet.get_vehicle_id(),
-                packet.get_sensor_type(),
-                packet.get_module_type(),
-            ))
+            job_complete = ProtocolMeta.instance().get_factory(E_PROTOCOL_ID.JOB_COMPLETE.value)(
+                self.name, EXTRACTOR_MANAGER,
+                packet.jobId, packet.vehicleId, packet.sensorType, packet.moduleType,
+            )
+            self.push_shared_job_queue(job_complete.to_json())
         except Exception as e:
             error_msg = (
                 f"[{self.name}] Exception\n"
-                f"Job Id : {packet.get_job_id()}\n"
+                f"Job Id : {packet.jobId}\n"
                 f"Exception Time : {datetime.now()}\n"
                 f"Message : {e}"
             )
             AppLogger.instance().exception(error_msg)
-            self._send(ErrorNoti(self.name, error_msg, packet.get_job_id(), "UNKNOWN"))
-        time.sleep(0)
-
-    # --- helpers ---
-
-    def _send(self, protocol) -> None:
-        # _shared_job_queue 는 manager 의 BulkMessageConsumer 가 watch — push 만 하면 됨.
-        self.push_shared_job_queue(protocol)
+            error_noti = ProtocolMeta.instance().get_factory(E_PROTOCOL_ID.ERROR_NOTI.value)(
+                self.name, EXTRACTOR_MANAGER,
+                error_msg, packet.jobId, "UNKNOWN",
+            )
+            self.push_shared_job_queue(error_noti.to_json())
 
     def _get_tmp_saved_path(self) -> Tuple[str, str]:
         tmp_pcap_path = self._disks[self._disk_select_index] + self._tmp_pcap

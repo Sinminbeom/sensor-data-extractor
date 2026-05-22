@@ -2,7 +2,7 @@ from typing import List
 
 from drivers.at128.pcd_conv import At128PcdConv
 from drivers.driver import IDriver
-# 차량(Vehicles)이 보유한 AT128 LiDAR driver. ExtractorWorker가 on_start/OnStop를 호출.
+# 차량(Vehicles)이 보유한 AT128 LiDAR driver. ExtractorModule가 on_start/OnStop를 호출.
 class At128(IDriver):
     name: str = "AT128"
 

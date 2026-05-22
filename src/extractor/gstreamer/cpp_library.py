@@ -17,10 +17,7 @@ def build_cpp_library_for_camera(process_index: int) -> Any | None:
     if process_index % 10 >= 4:
         return None
 
-    try:
-        from drivers.am20 import am20_converter as _mod
-    except ImportError:
-        from drivers.am20 import am20_converter_cpu as _mod  # type: ignore
+    from drivers.am20 import am20_converter_cpu as _mod  # type: ignore
 
     converter = _mod.AM20Converter({})
     converter.addElement()

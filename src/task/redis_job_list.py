@@ -74,5 +74,5 @@ class RedisJobListStore:
         result: list[str] = []
         for raw in self.fetch_all(mode):
             obj = JsonUtil.from_json(raw, PkUiJobInfo)
-            result.append(f"{obj.get_date()}_{obj.get_vehicle_id()}_{obj.get_sequence_id()}")
+            result.append(f"{obj.date}_{obj.vehicleId}_{obj.sequenceId}")
         return result

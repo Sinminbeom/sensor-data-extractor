@@ -2,8 +2,8 @@ from python_library.logger.app_logger import AppLogger
 
 from common.process.app_process import AppProcess
 from config.project_config import ProjectConfig
-# replayer 스타일을 따라 process 베이스로 감싸 ProcessCategory에 등록 가능하게 변경.
-# FastAPI app 자체 코드는 app/web_service/server.py로 분리 (uvicorn으로 실행).
+# MultiProcessManager 에 등록 가능한 AppProcess wrapper.
+# FastAPI app 자체 코드는 app/web_service/server.py로 분리 (uvicorn 으로 실행).
 class WebServiceProcess(AppProcess):
     def __init__(self, app_name: str, process_name: str) -> None:
         super().__init__(app_name, process_name)
