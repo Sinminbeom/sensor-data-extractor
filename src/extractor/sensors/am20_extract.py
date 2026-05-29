@@ -51,7 +51,7 @@ class Am20Extract(IExtract):
         try:
             tmp_save_path = f"{ctx.tmp_pcap_saved_path}{vehicle_id}/"
             tmp_result_path = f"{ctx.tmp_result_saved_path}{vehicle_id}/"
-            dst_path = f"{ctx.protocol.dstPath}/{vehicle_id}"
+            dst_path = f"{ctx.protocol.dstPath}/{Am20Extract._dst_subpath(ctx)}"
 
             AppLogger.instance().info(f"Read Camera File From Storage : {src_path}")
             message_buffer = Am20Extract._read_file(dst_storage, src_path)
@@ -259,7 +259,12 @@ class Am20Extract(IExtract):
 
     @staticmethod
     def _vehicle_id(ctx: ExtractContext) -> str:
-        return os.path.dirname(ctx.protocol.srcPath).split("/")[2]
+        return ctx.protocol.vehicleId
+
+    @staticmethod
+    def _dst_subpath(ctx: ExtractContext) -> str:
+        # 소스 구조 {vehicle_id}/{sensor_type}/{sensor_name}/{date} 를 목적지에 그대로 미러링.
+        return "/".join(ctx.protocol.srcPath.split("/")[-5:-1])
 
     @staticmethod
     def _original_filename(ctx: ExtractContext) -> str:
@@ -285,7 +290,8 @@ class Am20Extract(IExtract):
 
         with tarfile.open(tar_path, "w") as tar:
             for f in glob.glob(f"{tmp_result_path}{original}*.jpg"):
-                tar.add(f)
+                # arcname 으로 basename 만 넣어 tar 내부 디렉터리 구조 제거.
+                tar.add(f, arcname=os.path.basename(f))
 
         target = f"{dst_path}/{os.path.basename(tar_path)}"
         AppLogger.instance().info(f"Upload Result file : {tar_path} => {target}")

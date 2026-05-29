@@ -64,7 +64,7 @@ class GnssExtract(IExtract):
             extracted = f"{tmp_result_path}{pcap_filename}.{E_GNSS_CPP_EXTRACTOR.FORMAT}"
 
             GnssExtract._filter_result(extracted, cnt)
-            target = f"{ctx.protocol.dstPath}/{vehicle_id}/{os.path.basename(extracted)}"
+            target = f"{ctx.protocol.dstPath}/{GnssExtract._dst_subpath(ctx)}/{os.path.basename(extracted)}"
             dst_storage.upload(extracted, target)
             AppLogger.instance().info(f"Upload Result file : {extracted} => {target}")
 
@@ -163,4 +163,9 @@ class GnssExtract(IExtract):
 
     @staticmethod
     def _vehicle_id(ctx: ExtractContext) -> str:
-        return os.path.dirname(ctx.protocol.srcPath).split("/")[2]
+        return ctx.protocol.vehicleId
+
+    @staticmethod
+    def _dst_subpath(ctx: ExtractContext) -> str:
+        # 소스 구조 {vehicle_id}/{sensor_type}/{sensor_name}/{date} 를 목적지에 그대로 미러링.
+        return "/".join(ctx.protocol.srcPath.split("/")[-5:-1])

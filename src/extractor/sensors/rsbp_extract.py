@@ -236,19 +236,25 @@ class RsbpExtract(IExtract):
         zip_path = tmp_result_path + original + ".tar"
 
         ShellUtil(f"rm -rf {zip_path}", True).run()
-        cmd = f"tar -cvf {zip_path} {tmp_result_path}{original}*"
+        # tmp_result_path 로 cd 후 묶어 tar 내부 디렉터리 구조(절대경로) 제거.
+        cmd = f"cd {tmp_result_path} && tar -cvf {zip_path} {original}*"
         _, stderr = ShellUtil(cmd, True).run()
         if stderr and "tar: Removing leading `/'" not in stderr:
             return
 
-        target = f"{dst_path}/{RsbpExtract._vehicle_id(ctx)}/{os.path.basename(zip_path)}"
+        target = f"{dst_path}/{RsbpExtract._dst_subpath(ctx)}/{os.path.basename(zip_path)}"
         AppLogger.instance().info(f"Upload Result file : {zip_path} => {target}")
         dst_storage.upload(zip_path, target)
         RsbpExtract._delete_file(zip_path)
 
     @staticmethod
     def _vehicle_id(ctx: ExtractContext) -> str:
-        return os.path.dirname(ctx.protocol.srcPath).split("/")[2]
+        return ctx.protocol.vehicleId
+
+    @staticmethod
+    def _dst_subpath(ctx: ExtractContext) -> str:
+        # 소스 구조 {vehicle_id}/{sensor_type}/{sensor_name}/{date} 를 목적지에 그대로 미러링.
+        return "/".join(ctx.protocol.srcPath.split("/")[-5:-1])
 
     @staticmethod
     def _delete_tmp_files(files) -> None:
